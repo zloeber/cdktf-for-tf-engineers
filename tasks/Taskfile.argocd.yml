@@ -1,0 +1,241 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+vars:
+  CYAN: tput setaf 6
+  RED: tput setaf 1
+  YELLOW: tput setaf 3
+  GREEN: tput setaf 2
+  BLUE: tput setaf 1
+  PURPLE: tput setaf 5
+  BG_B: tput setab 0
+  BOLD: tput bold
+  RESET: tput sgr0
+  CLEAR: tput reset
+  INT_REGISTRY: registry.localhost
+  PATH_ERROR: is not installed or correctly configured in PATH.
+  ARGOCD_VERSION: 2.7.3
+  GH_OWNER: zloeber
+  GH_PUBLIC_DEPLOY_REPO: homelab
+  GH_PRIVATE_DEPLOY_REPO: homelab-private
+  GIT_URI:
+    sh: git config --get remote.origin.url | sed -e 's/:/\//g'| sed -e 's/ssh\/\/\///g'| sed -e 's/git@/https:\/\//g' | sed 's/.git$//'
+env:
+  environment:
+    sh: echo ${ENV:-"local"}
+  GITOPS_REPO: https://github.com/{{.GH_OWNER}}/{{.GH_PUBLIC_DEPLOY_REPO}}.git
+
+tasks:
+  secret:
+    cmds:
+      - |
+        kubectl apply -f - << EOF
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: private-repo-creds
+          labels:
+            argocd.argoproj.io/secret-type: repo-creds
+        stringData:
+          type: git
+          url: ${GITOPS_REPO}
+          password: "${GITHUB_TOKEN}"
+          username: "${GITHUB_USER}"
+        EOF
+    ignore_error: true
+
+  repo:
+    vars:
+      GIT_URI:
+        sh: git config --get remote.origin.url | sed -e 's/:/\//g'| sed -e 's/ssh\/\/\///g'| sed -e 's/git@/https:\/\//g' | sed 's/.git$//'
+    cmds:
+      - rm config/repo.yaml
+      - |
+        kubectl apply -f - << EOF
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: main-repository
+          namespace: argocd
+          labels:
+            argocd.argoproj.io/secret-type: repository
+        stringData:
+          type: git
+          url: "${GITOPS_REPO}"
+          password: "${GITHUB_TOKEN}"
+          username: "${GITHUB_USER}"
+        EOF
+      - |
+        kubectl apply -f - << EOF
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: private-repository
+          namespace: argocd
+          labels:
+            argocd.argoproj.io/secret-type: repository
+        stringData:
+          type: git
+          url: https://github.com/{{.GH_OWNER}}/{{.GH_PRIVATE_DEPLOY_REPO}}.git
+          password: "${GITHUB_TOKEN}"
+          username: "${GITHUB_USER}"
+        EOF
+    ignore_error: true
+
+  install:kustomize:
+    desc: Installs ArgoCD resources manually on the local cluster
+    dir: apps/argocd
+    preconditions:
+      - sh: "which kustomize"
+        msg: "kustomize {{.PATH_ERROR}}"
+      - sh: "which kubectl"
+        msg: "kubectl {{.PATH_ERROR}}"
+    cmds:
+      - |
+        kubectl create namespace argocd
+        kustomize build | kubectl apply -f -
+        sleep 10
+        kustomize build | kubectl apply -f -
+        kubectl wait deploy/argocd-server -n argocd --for condition=available --timeout=600s
+        echo ""
+    ignore_error: true
+
+  install:chart:
+    desc: Installs ArgoCD via helm chart
+    #dir: infrastructure/environments/${environment}/${cluster}
+    preconditions:
+      - sh: "which helm"
+        msg: "helm {{.PATH_ERROR}}"
+      - sh: "which kubectl"
+        msg: "kubectl {{.PATH_ERROR}}"
+    cmds:
+      - |
+        export ROOT_DIR={{.ROOT_DIR}}
+        export KUBECONFIG="{{.ROOT_DIR}}/secrets/kube/${environment}_${cluster}_config"
+        secrets_path="{{.ROOT_DIR}}/secrets/kube"
+        cluster_config="${ROOT_DIR}/infrastructure/environments/${environment}/${cluster}/config.yml"
+        echo "environment: ${environment}"
+        echo "cluster: ${cluster}"
+        echo "secrets_keys_path: ${secrets_keys_path}"
+        source {{.SCRIPT_PATH}}/load-env.sh ${environment}
+
+        # Create Namespaces
+        kubectl create ns argocd || true
+        kubectl create namespace ingress-nginx || true
+        mkdir -p "${secrets_path}"
+
+        ## Deploy Secrets
+        kubectl -n argocd create secret tls argocd-server-tls \
+          --cert ${secrets_path}/${environment}_${cluster}_tls.crt \
+          --key ${secrets_path}/${environment}_${cluster}_tls.key
+        helm install argocd argocd/argo-cd \
+            --kubeconfig "${KUBECONFIG}" \
+            --namespace argocd \
+            --create-namespace \
+            --upgrade \
+            --values ${cluster_config}
+        kubectl wait deploy/argocd-server -n argocd --for condition=available --timeout=600s
+        echo "ArgoCD deployed to ${environment}"
+
+  backup:
+    cmds:
+      - |
+        kubectl get secrets -n argocd \
+          -l argocd.argoproj.io/secret-type=repository \
+          -o yaml > repositories.yaml
+        kubectl get secrets -n argocd \
+          -l argocd.argoproj.io/secret-type=cluster \
+          -o yaml > clusters.yaml
+  build:
+    cmds:
+      - task: build:sidecar
+      - task: push:sidecar
+
+  build:sidecar:
+    preconditions:
+      - sh: "which docker"
+        msg: "docker {{.PATH_ERROR}}"
+    dir: apps/argocd
+    cmds:
+      - |
+        docker build -t docker.io/grubertech/argocd-sidecar:latest \
+                     -t docker.io/grubertech/argocd-sidecar:v{{.ARGOCD_VERSION}} \
+                     -t docker.io/grubertech/argocd:v{{.ARGOCD_VERSION}} \
+                     -t docker.io/grubertech/argocd:latest .
+    ignore_error: true
+
+  push:sidecar:
+    dir: apps/argocd
+    preconditions:
+      - sh: "which docker"
+        msg: "docker {{.PATH_ERROR}}"
+    cmds:
+      - docker push docker.io/grubertech/argocd-sidecar:latest
+      - docker push docker.io/grubertech/argocd-sidecar:v{{.ARGOCD_VERSION}}
+      - docker push docker.io/grubertech/argocd:latest
+      - docker push docker.io/grubertech/argocd:v{{.ARGOCD_VERSION}}
+    ignore_error: true
+
+  rm:
+    dir: apps/argocd
+    preconditions:
+      - sh: "which kustomize"
+        msg: "kustomize {{.PATH_ERROR}}"
+    cmds:
+      - kustomize build | kubectl delete -f -
+    ignore_error: true
+
+  bridge: kubectl port-forward -n argocd svc/argocd-server 8832:80
+
+  password:
+    cmds:
+      - kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo
+    ignore_error: true
+
+  password:token:
+    preconditions:
+      - sh: "which argocd"
+        msg: "argocd {{.PATH_ERROR}}"
+      - sh: "which kubectl"
+        msg: "kubectl {{.PATH_ERROR}}"
+    cmds:
+      - |
+        PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) \
+        argocd login --insecure --username admin --password ${PASSWORD} $ARGOCD_URI
+      - argocd account generate-token --account image-updater --id image-updater > config/argo-token.yaml
+
+  password:update:
+    preconditions:
+      - sh: "which argocd"
+        msg: "argocd {{.PATH_ERROR}}"
+      - sh: "which kubectl"
+        msg: "kubectl {{.PATH_ERROR}}"
+    cmds:
+      - |
+        PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d; echo) \
+        argocd login --insecure --username admin --password ${PASSWORD} $ARGOCD_URI
+      - argocd account update-password
+
+  login:
+    preconditions:
+      - sh: "which argocd"
+        msg: "argocd {{.PATH_ERROR}}"
+    cmds:
+      - argocd login localhost --username $ARGOCD_USERNAME --password $ARGOCD_PASSWORD
+
+  refresh:
+    preconditions:
+      - sh: "which argocd"
+        msg: "argocd {{.PATH_ERROR}}"
+    cmds:
+      - argocd app list -o name | xargs -I{} argocd app get --hard-refresh {}
+
+  reset:
+    cmds:
+      - task: login
+      - task: refresh
+
+  crds:
+    cmds:
+      - |
+        kubectl apply -k https://github.com/argoproj/argo-cd/manifests/crds\?ref\=stable

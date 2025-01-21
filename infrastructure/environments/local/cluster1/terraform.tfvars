@@ -1,0 +1,1 @@
+kubeconfig = "../../../../secrets/local/cluster1_config"

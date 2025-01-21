@@ -1,0 +1,225 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+silent: true
+vars:
+  TARGET:
+    sh: 'echo "${TARGET:-"local"}"'
+  PROFILE:
+    sh: 'echo "${PROFILE:-"default"}"'
+  PROJECT:
+    sh: 'echo "$(basename $(pwd))"'
+  LOCAL_BIN_PATH:
+    sh: 'echo "{{.ROOT_DIR}}/venv/bin"'
+  BUILD_DATE:
+    sh: "date '+%Y-%m-%d-%H:%M:%S'"
+  BUILD_DATE_SHORT:
+    sh: "date '+%Y-%m-%d-%H%M%S'"
+  GIT_LATEST_TAG:
+    sh: '$(git tag -l 2>/dev/null | sort -r -V | head -n 1 2>/dev/null) || echo "not a git repo"'
+  TERM: screen-256color
+  DOCS_PATH: "{{.ROOT_DIR}}/docs"
+  PYTHON_VENV_PATH: "{{.ROOT_DIR}}/venv"
+  SCRIPT_PATH: "{{.ROOT_DIR}}/scripts"
+  VERSION: '{{default "0.0.1" .GIT_LATEST_TAG}}'
+  OUTPUT_PATH: "{{.ROOT_DIR}}/output"
+  KUBERNETES_DIR: "{{.ROOT_DIR}}/infrastructure"
+  TERRAFORM: "terraform"
+
+# dotenv:
+#   - "./secrets/${VENV:-local}.env"
+
+includes:
+  variables:
+    taskfile: ./Taskfile.vars.yml
+    optional: true
+  agebox:
+    taskfile: ./tasks/Taskfile.agebox.yml
+    optional: true
+  ansible:
+    taskfile: ./tasks/Taskfile.ansible.yml
+    optional: true
+  argocd:
+    taskfile: ./tasks/Taskfile.argocd.yml
+    optional: true
+  aws:
+    taskfile: ./tasks/Taskfile.aws.yml
+    optional: true
+  cdk:
+    taskfile: ./tasks/Taskfile.cdk.yml
+    optional: true
+  chatgpt:
+    taskfile: ./tasks/Taskfile.chatgpt.yml
+    optional: true
+  cloudflared:
+    taskfile: ./tasks/Taskfile.cloudflared.yml
+    optional: true
+  cluster:
+    taskfile: ./tasks/Taskfile.cluster.yml
+    optional: true
+  docker:
+    taskfile: ./tasks/Taskfile.docker.yml
+    optional: true
+  dotnet:
+    taskfile: ./tasks/Taskfile.dotnet.yml
+    optional: true
+  dynamodb:
+    taskfile: ./tasks/Taskfile.dynamodb.yml
+    optional: true
+  flux:
+    taskfile: ./tasks/Taskfile.flux.yml
+    optional: true
+  format:
+    taskfile: ./tasks/Taskfile.format.yml
+    optional: true
+  github:
+    taskfile: ./tasks/Taskfile.github.yml
+    optional: true
+  gitlab:
+    taskfile: ./tasks/Taskfile.gitlab.yml
+    optional: true
+  git:
+    taskfile: ./tasks/Taskfile.git.yml
+    optional: true
+  go:
+    taskfile: ./tasks/Taskfile.go.yml
+    optional: true
+  helmfile:
+    taskfile: ./tasks/Taskfile.helmfile.yml
+    optional: true
+  hugo:
+    taskfile: ./tasks/Taskfile.hugo.yml
+    optional: true
+  kube:
+    taskfile: ./tasks/Taskfile.kube.yml
+    optional: true
+  lint:
+    taskfile: ./tasks/Taskfile.lint.yml
+    optional: true
+  openapi:
+    taskfile: ./tasks/Taskfile.openapi.yml
+    optional: true
+  precommit:
+    taskfile: ./tasks/Taskfile.precommit.yml
+    optional: true
+  python:
+    taskfile: ./tasks/Taskfile.python.yml
+    optional: true
+  sops:
+    taskfile: ./tasks/Taskfile.sops.yml
+    optional: true
+  steampipe:
+    taskfile: ./tasks/Taskfile.steampipe.yml
+    optional: true
+  terraform:
+    taskfile: ./tasks/Taskfile.terraform.yml
+    optional: true
+  vault:
+    taskfile: ./tasks/Taskfile.vault.yml
+    optional: true
+  workspace:
+    taskfile: ./tasks/Taskfile.workspace.yml
+    optional: true
+  custom:
+    taskfile: ./Taskfile.custom.yml
+    optional: true
+
+tasks:
+  default:
+    cmds:
+      - |
+        task -l
+
+  show:
+    desc: Show task variables
+    cmds:
+      - |
+        echo "ROOT_PATH: {{.ROOT_DIR}}"
+        echo "ENV: ${ENV:-"local"}"
+        echo "PROFILE: {{.PROFILE}}"
+        echo "PROJECT: {{.PROJECT}}"
+        echo "VERSION: {{.VERSION}}"
+        echo "OS: {{OS}}"
+        echo "ARCH: {{ARCH}}"
+        echo "LOCAL_BIN_PATH: {{.LOCAL_BIN_PATH}}"
+        echo "DOCS_PATH: {{.DOCS_PATH}}"
+        echo "PYTHON_VENV_PATH: {{.PYTHON_VENV_PATH}}"
+        echo "SCRIPT_PATH: {{.SCRIPT_PATH}}"
+        echo "BUILD_DATE: {{.BUILD_DATE}}"
+        echo "GIT_LATEST_TAG: {{.GIT_LATEST_TAG}}"
+
+  show:all:
+    desc: Show all variables for task namespaces
+    cmds:
+      - |
+        echo "## Show ##";
+        task show
+        echo ""
+        for taskitem in $(task -l | cut -d " " -f2 | grep show | sed 's/.$//'); do
+          if [[ "$taskitem" != "show:all" ]]; then
+            echo "## Show - ${taskitem} ##";
+            task $taskitem;
+            echo "";
+          fi
+        done
+
+  list:
+    desc: List tasks by namespace (task list -- <namespace>)
+    cmds:
+      - |
+        if [[ "{{.CLI_ARGS}}" != "" ]]; then
+          task -l | grep {{default "" .CLI_ARGS}}
+        else
+          task -l
+        fi
+
+  toc:
+    desc: Update the table of contents in README.md
+    cmds:
+      - |
+        source {{.LOCAL_BIN_PATH}}/activate
+        mdtoc README.md
+
+  autocomplete:
+    desc: Setup task autocomplete (zsh)
+    cmds:
+      - sudo curl https://raw.githubusercontent.com/go-task/task/main/completion/zsh/_task \
+        -o /usr/local/share/zsh/site-functions/_task
+    status:
+      - "test -f /usr/local/share/zsh/site-functions/_task"
+
+  deploy:
+    cmds:
+      - |
+        echo "TARGET: {{.TARGET}}"
+        echo "TERRAFORM: {{.TERRAFORM}}"
+        {{.TERRAFORM}} -chdir=infrastructure/environments/{{.TARGET}} init -upgrade
+        {{.TERRAFORM}} -chdir=infrastructure/environments/{{.TARGET}} plan -out=terraform.tfplan
+        {{.TERRAFORM}} -chdir=infrastructure/environments/{{.TARGET}} apply -parallelism=1 terraform.tfplan
+
+  deploy:all:
+    cmds:
+      - task: deploy
+        vars:
+          TARGET: local
+      - task: deploy
+        vars:
+          TARGET: local/cluster1
+
+  destroy:
+    cmds:
+      - |
+        echo "TARGET: {{.TARGET}}"
+        echo "TERRAFORM: {{.TERRAFORM}}"
+        {{.TERRAFORM}} -chdir=infrastructure/environments/{{.TARGET}} destroy -parallelism=1
+
+  clean:
+    cmds:
+      - |
+        k3d cluster delete cluster1 || true
+        kind delete cluster -n cluster1 || true
+        rm -rf ./infrastructure/environments/{{.TARGET}}/.terraform
+        rm -rf ./infrastructure/environments/{{.TARGET}}/cluster1/.terraform
+        rm -rf ./secrets/{{.TARGET}} "*.tfplan*"
+        find ./infrastructure/environments/{{.TARGET}} -type f \( -name "*.tfstate" -o -name "*.tfplan" -o -name "*.terraform" -o -name "*.lock.hcl" \) -exec rm -f {} +
+        find ./secrets/{{.TARGET}} -type f \( -name "*.tfstate" -o -name "*.tfplan" -o -name ".terraform" -o -name "tfplan.json" \) -exec rm -f {} +
