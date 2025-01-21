@@ -191,6 +191,7 @@ tasks:
   deploy:
     cmds:
       - |
+        mkdir -p {{.ROOT_DIR}}/secrets/{{.TARGET}}
         echo "TARGET: {{.TARGET}}"
         echo "TERRAFORM: {{.TERRAFORM}}"
         {{.TERRAFORM}} -chdir=infrastructure/environments/{{.TARGET}} init -upgrade
