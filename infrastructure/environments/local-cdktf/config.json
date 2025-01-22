@@ -1,0 +1,14 @@
+{
+  "env": "local",
+  "argocd_namespace": "argocd",
+  "argocd_version": "stable",
+  "infrastructure": {
+    "state": "../../../../../../secrets/local/infra_state"
+  },
+  "cluster1": {
+    "state": "../../../../../../secrets/local/cluster1_state",
+    "kubeconfig": "../../../../../../secrets/local/cluster1_config",
+    "helm_values": "./cluster1/config.yml",
+    "secrets_path": "../../../../../../secrets/local"
+  }
+}

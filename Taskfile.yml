@@ -224,3 +224,44 @@ tasks:
         rm -rf ./secrets/{{.TARGET}} "*.tfplan*"
         find ./infrastructure/environments/{{.TARGET}} -type f \( -name "*.tfstate" -o -name "*.tfplan" -o -name "*.terraform" -o -name "*.lock.hcl" \) -exec rm -f {} +
         find ./secrets/{{.TARGET}} -type f \( -name "*.tfstate" -o -name "*.tfplan" -o -name ".terraform" -o -name "tfplan.json" \) -exec rm -f {} +
+
+  convert:
+    cmds:
+      - |
+        rm -rf ./infrastructure/environments/local-cdktf
+        mkdir -p ./infrastructure/environments/local-cdktf
+        pushd ./infrastructure/environments/local-cdktf
+        cdktf init \
+          --project-name local-cdktf \
+          --project-description "Example migration" \
+          --local \
+          --from-terraform-project ../local \
+          --providers tehcyx/kind@0.7.0,hashicorp/helm \
+          --template typescript
+        popd
+
+  deploy:cdktf:
+    dir: ./infrastructure/environments/local-cdktf
+    cmds:
+      - |
+        npm install
+        cdktf get
+        cdktf synth
+        cdktf deploy --parallelism=1 '*'
+
+  destroy:cdktf:
+    dir: ./infrastructure/environments/local-cdktf
+    cmds:
+      - |
+        cdktf destroy '*'
+
+  clean:cdktf:
+    cmds:
+      - |
+        rm -rf ./infrastructure/environments/local-cdktf/.gen
+        rm -rf ./infrastructure/environments/local-cdktf/cdktf.out
+        rm -rf ./infrastructure/environments/local-cdktf/.terraform
+        rm -f ./infrastructure/environments/local-cdktf/terraform.tfstate
+        rm -f ./infrastructure/environments/local-cdktf/terraform.tfstate.backup
+        rm -f ./infrastructure/environments/local-cdktf/cdktf.context.json
+        rm -f ./secrets/local/cluster1_*

@@ -1,0 +1,16 @@
+{
+  "language": "typescript",
+  "app": "npx ts-node main.ts",
+  "projectId": "b0d8b84d-514e-4b09-8e5b-b837ac428411",
+  "sendCrashReports": "false",
+  "terraformProviders": [
+    "hashicorp/kubernetes",
+    "hashicorp/helm",
+    "tehcyx/kind@0.7.0"
+  ],
+  "terraformModules": [
+    "../../modules/k8s-kind-cluster",
+    "../../modules/self-signed-cert"
+  ],
+  "context": {}
+}

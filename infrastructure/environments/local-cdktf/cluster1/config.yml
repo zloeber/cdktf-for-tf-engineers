@@ -1,0 +1,28 @@
+global:
+  domain: localhost
+
+configs:
+  params:
+    server.insecure: true
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    extraTls:
+      - hosts:
+          - localhost
+        # Based on the ingress controller used secret might be optional
+        secretName: wildcard-tls
+  # config:
+  #   configManagementPlugins: |
+  #     - name: helmSecrets
+  #       init:
+  #         command: ["gpg"]
+  #         args: ["--import", "/home/argocd/gpg/gpg.asc"] # is mounted as a kube secret
+  #       generate:
+  #         command: ["/bin/sh", "-c"]
+  #         args: ["helm secrets template $HELM_OPTS $RELEASE_NAME ."]
