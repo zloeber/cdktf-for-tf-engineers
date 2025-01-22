@@ -1,11 +1,7 @@
 [tools]
 task = 'latest'
 jq = 'latest'
-pre-commit = 'latest'
-yamllint = 'latest'
-k3d = 'latest'
 terraform = 'latest'
 opentofu = "latest"
 kind = "latest"
 node = "20"
-
