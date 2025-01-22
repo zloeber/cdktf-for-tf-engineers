@@ -206,7 +206,7 @@ export KUBECONFIG=./secrets/local/cluster1_config
 kubectl get deployments.apps --all-namespace
 ```
 
-If you are all done: `cdktf destroy '*'`.
+If you are all done blow it all away with `cdktf destroy '*'`.
 
 # Conclusion
 
